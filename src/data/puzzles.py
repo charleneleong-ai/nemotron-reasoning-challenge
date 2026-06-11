@@ -13,6 +13,11 @@ SYSTEM_PROMPT = (
 )
 
 
+def build_prompt(prompt: str) -> str:
+    """The system+user+assistant-open prefix shared by training and inference."""
+    return f"<|system|>\n{SYSTEM_PROMPT}\n<|user|>\n{prompt}\n<|assistant|>\n"
+
+
 @dataclass(frozen=True)
 class Puzzle:
     id: str
@@ -51,9 +56,5 @@ def split_puzzles(
 
 
 def to_sft_record(puzzle: Puzzle) -> dict[str, str]:
-    text = (
-        f"<|system|>\n{SYSTEM_PROMPT}\n"
-        f"<|user|>\n{puzzle.prompt}\n"
-        f"<|assistant|>\nThe answer is \\boxed{{{puzzle.answer}}}."
-    )
+    text = f"{build_prompt(puzzle.prompt)}The answer is \\boxed{{{puzzle.answer}}}."
     return {"id": puzzle.id, "text": text}

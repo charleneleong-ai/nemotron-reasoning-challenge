@@ -8,7 +8,7 @@ from peft import PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from src.config.schemas import ExperimentConfig
-from src.data.puzzles import SYSTEM_PROMPT, load_puzzles, split_puzzles
+from src.data.puzzles import build_prompt, load_puzzles, split_puzzles
 from src.eval.boxed import evaluate
 from src.logger import get_logger
 
@@ -31,7 +31,7 @@ def run_eval(cfg: ExperimentConfig, adapter_dir: Path) -> dict[str, float | int]
     model.eval()
 
     def generate_fn(prompt: str) -> str:
-        text = f"<|system|>\n{SYSTEM_PROMPT}\n<|user|>\n{prompt}\n<|assistant|>\n"
+        text = build_prompt(prompt)
         inputs = tokenizer(text, return_tensors="pt")
         with torch.no_grad():
             out = model.generate(
