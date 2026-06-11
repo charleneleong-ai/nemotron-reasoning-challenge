@@ -34,3 +34,19 @@ class TestScore:
     )
     def test_score(self, pred, gold, ok):
         assert score(pred, gold, tolerance=1e-2) is ok
+
+
+class TestEvaluate:
+    def test_evaluate_scores_predictions(self):
+        from src.data.puzzles import Puzzle
+        from src.eval.boxed import evaluate
+
+        puzzles = [
+            Puzzle(id="a", prompt="Q1", answer="2"),
+            Puzzle(id="b", prompt="Q2", answer="5"),
+        ]
+        texts = iter([r"answer \boxed{2}", r"answer \boxed{9}"])
+        result = evaluate(puzzles, generate_fn=lambda _p: next(texts), tolerance=1e-2)
+        assert result["accuracy"] == 0.5
+        assert result["n"] == 2
+        assert result["correct"] == 1

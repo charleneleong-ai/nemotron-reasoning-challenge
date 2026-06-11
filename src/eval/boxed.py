@@ -1,5 +1,9 @@
 """Parse \\boxed{} answers and score against gold (exact or numeric tolerance)."""
 
+from collections.abc import Callable
+
+from src.data.puzzles import Puzzle
+
 
 def extract_boxed(text: str) -> str | None:
     """Return the content of the last \\boxed{...}, handling nested braces. None if absent."""
@@ -41,3 +45,18 @@ def score(pred: str | None, gold: str, tolerance: float = 1e-2) -> bool:
     if pf is not None and gf is not None:
         return abs(pf - gf) <= tolerance
     return False
+
+
+def evaluate(
+    puzzles: list[Puzzle],
+    generate_fn: Callable[[str], str],
+    tolerance: float = 1e-2,
+) -> dict[str, float | int]:
+    """Run generate_fn over each puzzle prompt, score the boxed answer, return aggregate."""
+    correct = 0
+    for p in puzzles:
+        pred = extract_boxed(generate_fn(p.prompt))
+        if score(pred, p.answer, tolerance):
+            correct += 1
+    n = len(puzzles)
+    return {"n": n, "correct": correct, "accuracy": correct / n if n else 0.0}
