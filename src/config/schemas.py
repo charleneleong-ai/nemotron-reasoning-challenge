@@ -39,6 +39,17 @@ class TrainConfig(BaseModel):
     batch_size: int = Field(1, gt=0)
     grad_accum: int = Field(1, gt=0)
     output_dir: str = "adapters/run"
+    lora_target_modules: list[str] | str = Field(
+        default_factory=lambda: [
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+        ]
+    )
 
 
 class EvalConfig(BaseModel):

@@ -3,9 +3,23 @@ from pathlib import Path
 import pytest
 
 from src.config.schemas import DataConfig
-from src.data.puzzles import Puzzle, load_puzzles, split_puzzles, to_sft_record
+from src.data.puzzles import (
+    Puzzle,
+    build_inference_prompt,
+    format_target,
+    load_puzzles,
+    split_puzzles,
+    to_sft_text,
+)
 
 FIXTURE = Path(__file__).parent / "fixtures" / "mini_problems.jsonl"
+
+
+@pytest.fixture(scope="module")
+def proxy_tokenizer():
+    from transformers import AutoTokenizer
+
+    return AutoTokenizer.from_pretrained("HuggingFaceTB/SmolLM2-135M-Instruct")
 
 
 @pytest.fixture
@@ -59,8 +73,21 @@ class TestSplit:
         assert [p.id for p in a] == [p.id for p in b]
 
 
-class TestSftRecord:
-    def test_answer_wrapped_in_boxed(self):
-        rec = to_sft_record(Puzzle(id="x", prompt="Q?", answer="42"))
-        assert r"\boxed{42}" in rec["text"]
-        assert "Q?" in rec["text"]
+class TestFormatTarget:
+    def test_thinking_mode_and_boxed(self):
+        out = format_target("42")
+        assert "<think>" in out and "</think>" in out
+        assert r"\boxed{42}" in out
+
+
+@pytest.mark.slow
+class TestChatFormat:
+    def test_sft_text_has_prompt_and_boxed(self, proxy_tokenizer):
+        text = to_sft_text(Puzzle("x", "What is 2+2?", "4"), proxy_tokenizer)
+        assert "What is 2+2?" in text
+        assert r"\boxed{4}" in text
+
+    def test_inference_prompt_omits_target(self, proxy_tokenizer):
+        text = build_inference_prompt("What is 2+2?", proxy_tokenizer)
+        assert "What is 2+2?" in text
+        assert r"\boxed{" not in text

@@ -8,3 +8,4 @@ max_steps: -1
 batch_size: 4
 grad_accum: 4
 output_dir: adapters/lora_a100
+lora_target_modules: all-linear

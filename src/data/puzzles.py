@@ -1,4 +1,4 @@
-"""Load reasoning puzzles and format them as SFT records with \\boxed{} targets."""
+"""Load reasoning puzzles and format them via the model's chat template."""
 
 import csv
 import json
@@ -7,18 +7,14 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from itertools import islice
 from pathlib import Path
+from typing import Any
 
 from src.config.schemas import DataConfig
 
-SYSTEM_PROMPT = (
-    "You are a careful reasoning solver. Identify the underlying transformation "
-    "rule, apply it, and give the final answer inside \\boxed{}."
-)
 
-
-def build_prompt(prompt: str) -> str:
-    """The system+user+assistant-open prefix shared by training and inference."""
-    return f"<|system|>\n{SYSTEM_PROMPT}\n<|user|>\n{prompt}\n<|assistant|>\n"
+def format_target(answer: str) -> str:
+    """Assistant turn content in thinking mode: empty think block + boxed answer."""
+    return f"<think>\n\n</think>\n\n\\boxed{{{answer}}}"
 
 
 @dataclass(frozen=True)
@@ -26,6 +22,24 @@ class Puzzle:
     id: str
     prompt: str
     answer: str
+
+
+def to_sft_text(puzzle: Puzzle, tokenizer: Any) -> str:
+    """Full SFT training text: user turn + assistant turn, via the chat template."""
+    messages = [
+        {"role": "user", "content": puzzle.prompt},
+        {"role": "assistant", "content": format_target(puzzle.answer)},
+    ]
+    return tokenizer.apply_chat_template(messages, tokenize=False)
+
+
+def build_inference_prompt(prompt: str, tokenizer: Any) -> str:
+    """Inference prompt: user turn only, with the generation prompt appended."""
+    return tokenizer.apply_chat_template(
+        [{"role": "user", "content": prompt}],
+        tokenize=False,
+        add_generation_prompt=True,
+    )
 
 
 def _read_rows(path: Path) -> Iterator[dict[str, str]]:
@@ -61,8 +75,3 @@ def split_puzzles(
     random.Random(cfg.seed).shuffle(order)
     n_dev = max(1, round(len(order) * cfg.eval_fraction))
     return order[n_dev:], order[:n_dev]
-
-
-def to_sft_record(puzzle: Puzzle) -> dict[str, str]:
-    text = f"{build_prompt(puzzle.prompt)}The answer is \\boxed{{{puzzle.answer}}}."
-    return {"id": puzzle.id, "text": text}

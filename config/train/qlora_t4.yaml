@@ -8,3 +8,4 @@ max_steps: -1
 batch_size: 1
 grad_accum: 8
 output_dir: adapters/qlora_t4
+lora_target_modules: all-linear

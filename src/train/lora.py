@@ -6,7 +6,7 @@ import torch
 from datasets import Dataset
 
 from src.config.schemas import ExperimentConfig
-from src.data.puzzles import load_puzzles, split_puzzles, to_sft_record
+from src.data.puzzles import Puzzle, load_puzzles, split_puzzles, to_sft_text
 from src.logger import get_logger
 
 logger = get_logger(__name__)
@@ -18,15 +18,15 @@ _DTYPES = {
 }
 
 
-def _target_modules() -> list[str]:
-    return ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+def _build_dataset(puzzles: list[Puzzle], tokenizer: object) -> Dataset:
+    return Dataset.from_list(
+        [{"id": p.id, "text": to_sft_text(p, tokenizer)} for p in puzzles]
+    )
 
 
 def train_adapter(cfg: ExperimentConfig) -> Path:
     """Run SFT and write a LoRA adapter to cfg.train.output_dir. Returns that path."""
-    puzzles = load_puzzles(cfg.data)
-    train_puzzles, _ = split_puzzles(puzzles, cfg.data)
-    dataset = Dataset.from_list([to_sft_record(p) for p in train_puzzles])
+    train_puzzles, _ = split_puzzles(load_puzzles(cfg.data), cfg.data)
     out_dir = Path(cfg.train.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -34,13 +34,15 @@ def train_adapter(cfg: ExperimentConfig) -> Path:
         from unsloth import FastLanguageModel  # noqa: F401
 
         logger.info("Unsloth available — using FastLanguageModel path")
-        return _train_unsloth(cfg, dataset, out_dir)
+        return _train_unsloth(cfg, train_puzzles, out_dir)
     except ImportError:
         logger.info("Unsloth not found — using PEFT + TRL path")
-        return _train_peft(cfg, dataset, out_dir)
+        return _train_peft(cfg, train_puzzles, out_dir)
 
 
-def _train_peft(cfg: ExperimentConfig, dataset: Dataset, out_dir: Path) -> Path:
+def _train_peft(
+    cfg: ExperimentConfig, train_puzzles: list[Puzzle], out_dir: Path
+) -> Path:
     from peft import LoraConfig
     from transformers import AutoModelForCausalLM, AutoTokenizer
     from trl import SFTConfig, SFTTrainer
@@ -59,12 +61,13 @@ def _train_peft(cfg: ExperimentConfig, dataset: Dataset, out_dir: Path) -> Path:
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     model = AutoModelForCausalLM.from_pretrained(cfg.model.hf_id, **model_kwargs)
+    dataset = _build_dataset(train_puzzles, tokenizer)
 
     peft_config = LoraConfig(
         r=cfg.train.lora_rank,
         lora_alpha=cfg.train.lora_alpha,
         lora_dropout=cfg.train.lora_dropout,
-        target_modules=_target_modules(),
+        target_modules=cfg.train.lora_target_modules,
         task_type="CAUSAL_LM",
     )
     sft_config = SFTConfig(
@@ -92,7 +95,24 @@ def _train_peft(cfg: ExperimentConfig, dataset: Dataset, out_dir: Path) -> Path:
     return out_dir
 
 
-def _train_unsloth(cfg: ExperimentConfig, dataset: Dataset, out_dir: Path) -> Path:
+def _resolve_target_modules(
+    target_modules: list[str] | str, model: torch.nn.Module
+) -> list[str]:
+    """Unsloth's get_peft_model needs a concrete list; expand "all-linear" from the model."""
+    if target_modules != "all-linear":
+        return list(target_modules)
+    names = {
+        name.split(".")[-1]
+        for name, mod in model.named_modules()
+        if isinstance(mod, torch.nn.Linear)
+    }
+    names.discard("lm_head")
+    return sorted(names)
+
+
+def _train_unsloth(
+    cfg: ExperimentConfig, train_puzzles: list[Puzzle], out_dir: Path
+) -> Path:
     from trl import SFTConfig, SFTTrainer
     from unsloth import FastLanguageModel
 
@@ -102,12 +122,13 @@ def _train_unsloth(cfg: ExperimentConfig, dataset: Dataset, out_dir: Path) -> Pa
         dtype=_DTYPES[cfg.model.dtype],
         load_in_4bit=cfg.model.load_in_4bit,
     )
+    dataset = _build_dataset(train_puzzles, tokenizer)
     model = FastLanguageModel.get_peft_model(
         model,
         r=cfg.train.lora_rank,
         lora_alpha=cfg.train.lora_alpha,
         lora_dropout=cfg.train.lora_dropout,
-        target_modules=_target_modules(),
+        target_modules=_resolve_target_modules(cfg.train.lora_target_modules, model),
     )
     sft_config = SFTConfig(
         output_dir=str(out_dir),
