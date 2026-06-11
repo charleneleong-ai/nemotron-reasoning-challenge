@@ -1,5 +1,8 @@
 kind: nemotron
-hf_id: nvidia/Nemotron-3-Nano-30B-A3B-BF16
+# TODO: confirm the exact base model from the competition "Models" tab before a real run.
+# `nvidia/Nemotron-3-Nano-30B-A3B-BF16` (original placeholder) does NOT exist on HF (404).
+# Best-known candidate is the custom-code Mamba-MoE reasoning model below.
+hf_id: nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16
 load_in_4bit: true
 dtype: bfloat16
 max_seq_length: 2048

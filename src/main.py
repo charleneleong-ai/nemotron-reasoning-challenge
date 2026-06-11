@@ -65,5 +65,16 @@ def package(overrides: list[str] = typer.Argument(None)) -> None:
     rich_print(f"[green]packaged[/green] -> {out}")
 
 
+@app.command()
+def submit(
+    message: str = typer.Option("submission", help="Submission description."),
+) -> None:
+    """Upload submission.zip to the Kaggle competition (reads KAGGLE_API_TOKEN from .env)."""
+    from src.submission.submit import submit as submit_zip
+
+    submit_zip(Path("submission.zip"), message)
+    rich_print("[green]submitted[/green] submission.zip")
+
+
 if __name__ == "__main__":
     app()
