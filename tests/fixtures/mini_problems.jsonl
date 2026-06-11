@@ -1,0 +1,4 @@
+{"id": "p1", "problem": "Apply the rule: double the input. Input: 6.", "answer": "12"}
+{"id": "p2", "problem": "Apply the rule: XOR with 1. Input bit: 0.", "answer": "1"}
+{"id": "p3", "problem": "Solve for x: 2x + 4 = 10.", "answer": "3"}
+{"id": "p4", "problem": "Apply the rule: add 1.5. Input: 2.5.", "answer": "4.0"}
