@@ -1,0 +1,8 @@
+defaults:
+  - model: proxy
+  - data: default
+  - train: smoke
+  - eval: boxed_accuracy
+  - _self_
+
+experiment_name: nemotron-scaffold

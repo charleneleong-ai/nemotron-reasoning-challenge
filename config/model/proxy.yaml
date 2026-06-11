@@ -1,0 +1,5 @@
+kind: proxy
+hf_id: HuggingFaceTB/SmolLM2-135M
+load_in_4bit: false
+dtype: float32
+max_seq_length: 1024
