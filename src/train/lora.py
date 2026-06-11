@@ -48,6 +48,11 @@ def _train_peft(
     from trl import SFTConfig, SFTTrainer
 
     model_kwargs: dict = {"torch_dtype": _DTYPES[cfg.model.dtype]}
+    if cfg.model.kind == "nemotron":
+        # Shard the (large, custom-code) base across all visible GPUs; needed for the
+        # real Nemotron on multi-GPU. Left off for the tiny CPU/MPS proxy.
+        model_kwargs["device_map"] = "auto"
+        model_kwargs["trust_remote_code"] = True
     if cfg.model.load_in_4bit:
         from transformers import BitsAndBytesConfig
 
@@ -57,7 +62,9 @@ def _train_peft(
             bnb_4bit_quant_type="nf4",
         )
 
-    tokenizer = AutoTokenizer.from_pretrained(cfg.model.hf_id)
+    tokenizer = AutoTokenizer.from_pretrained(
+        cfg.model.hf_id, trust_remote_code=cfg.model.kind == "nemotron"
+    )
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     model = AutoModelForCausalLM.from_pretrained(cfg.model.hf_id, **model_kwargs)
