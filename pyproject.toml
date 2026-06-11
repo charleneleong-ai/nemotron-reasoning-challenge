@@ -1,0 +1,70 @@
+[project]
+name = "nemotron-reasoning-challenge"
+version = "0.1.0"
+description = "LoRA fine-tuning scaffold for the NVIDIA Nemotron Model Reasoning Challenge"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "typer>=0.12.0",
+  "rich>=13.7.0",
+  "pydantic>=2.11.0",
+  "pydantic-settings>=2.11.0",
+  "hydra-core>=1.3.2",
+  "omegaconf>=2.3.0",
+  "torch>=2.3.0",
+  "transformers>=4.45,<5",
+  "datasets>=2.20.0",
+  "peft>=0.13.0",
+  "trl>=0.11.0",
+  "tqdm>=4.67.0",
+]
+
+[project.optional-dependencies]
+gpu = [
+  "bitsandbytes>=0.43.0",
+  "accelerate>=0.34.0",
+]
+dev = [
+  "pytest>=8.4.0",
+  "pytest-xdist>=3.6.0",
+  "ruff>=0.11.10",
+  "mypy>=1.15.0",
+  "pre-commit>=3.7.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[project.scripts]
+main = "src.main:app"
+
+[tool.ruff]
+fix = true
+unsafe-fixes = false
+
+[tool.ruff.lint]
+select = ["F", "E", "W", "I", "UP", "B", "Q", "N"]
+ignore = ["E501", "B008", "N812"]
+fixable = ["ALL"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["N802", "N803"]
+
+[tool.mypy]
+disallow_untyped_defs = true
+ignore_missing_imports = true
+show_error_codes = true
+plugins = ["pydantic.mypy"]
+packages = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -q --strict-markers"
+markers = [
+  "slow: full pipeline / model download (deselect with '-m \"not slow\"')",
+]
+filterwarnings = ["ignore::DeprecationWarning"]

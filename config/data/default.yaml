@@ -1,0 +1,6 @@
+path: data/problems.jsonl
+prompt_field: problem
+answer_field: answer
+eval_fraction: 0.1
+seed: 42
+max_samples: null

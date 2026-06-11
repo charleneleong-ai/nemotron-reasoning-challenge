@@ -1,0 +1,10 @@
+preset: qlora_t4
+lora_rank: 16
+lora_alpha: 32
+lora_dropout: 0.05
+learning_rate: 0.0002
+num_epochs: 1
+max_steps: -1
+batch_size: 1
+grad_accum: 8
+output_dir: adapters/qlora_t4

@@ -1,0 +1,29 @@
+min_version = "2024.1.0"
+
+[tasks.test]
+description = "Fast tests only (excludes slow), parallel"
+run = "uv run pytest -n auto -m 'not slow'"
+
+[tasks."test:all"]
+description = "Full suite including slow pipeline test"
+run = "uv run pytest -n auto"
+
+[tasks.lint]
+description = "Ruff check + format check"
+run = "uv run ruff check src tests && uv run ruff format --check src tests"
+
+[tasks.typecheck]
+description = "mypy"
+run = "uv run mypy"
+
+[tasks.train]
+description = "Train a LoRA adapter (default: proxy/smoke)"
+run = "uv run main train {{arg(name='overrides', default='')}}"
+
+[tasks.eval]
+description = "Evaluate an adapter (boxed accuracy)"
+run = "uv run main eval {{arg(name='overrides', default='')}}"
+
+[tasks.package]
+description = "Package adapter -> submission.zip"
+run = "uv run main package {{arg(name='overrides', default='')}}"
