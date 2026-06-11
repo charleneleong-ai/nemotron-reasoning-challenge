@@ -19,7 +19,7 @@ class DataConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     path: str
-    prompt_field: str = "problem"
+    prompt_field: str = "prompt"
     answer_field: str = "answer"
     eval_fraction: float = Field(0.1, gt=0.0, lt=1.0)
     seed: int = 42

@@ -1,8 +1,11 @@
 """Load reasoning puzzles and format them as SFT records with \\boxed{} targets."""
 
+import csv
 import json
 import random
+from collections.abc import Iterator
 from dataclasses import dataclass
+from itertools import islice
 from pathlib import Path
 
 from src.config.schemas import DataConfig
@@ -25,25 +28,30 @@ class Puzzle:
     answer: str
 
 
+def _read_rows(path: Path) -> Iterator[dict[str, str]]:
+    """Yield string-valued rows from a .csv or .jsonl file (leading zeros preserved)."""
+    if path.suffix == ".csv":
+        with path.open(newline="") as fh:
+            yield from csv.DictReader(fh)
+    else:
+        with path.open() as fh:
+            for line in fh:
+                if line.strip():
+                    yield json.loads(line)
+
+
 def load_puzzles(cfg: DataConfig) -> list[Puzzle]:
-    path = Path(cfg.path)
-    puzzles: list[Puzzle] = []
-    with path.open() as fh:
-        for i, line in enumerate(fh):
-            line = line.strip()
-            if not line:
-                continue
-            row = json.loads(line)
-            puzzles.append(
-                Puzzle(
-                    id=str(row.get("id", i)),
-                    prompt=str(row[cfg.prompt_field]),
-                    answer=str(row[cfg.answer_field]),
-                )
-            )
+    rows: Iterator[dict[str, str]] = _read_rows(Path(cfg.path))
     if cfg.max_samples is not None:
-        puzzles = puzzles[: cfg.max_samples]
-    return puzzles
+        rows = islice(rows, cfg.max_samples)
+    return [
+        Puzzle(
+            id=str(row.get("id", i)),
+            prompt=str(row[cfg.prompt_field]),
+            answer=str(row[cfg.answer_field]),
+        )
+        for i, row in enumerate(rows)
+    ]
 
 
 def split_puzzles(

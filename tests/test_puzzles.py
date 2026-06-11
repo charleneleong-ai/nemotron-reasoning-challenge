@@ -31,6 +31,19 @@ class TestLoad:
         p = load_puzzles(c)[0]
         assert p.prompt == "Q?" and p.answer == "9"
 
+    def test_loads_csv_preserving_leading_zeros(self, tmp_path):
+        f = tmp_path / "mini.csv"
+        f.write_text(
+            "id,prompt,answer\n"
+            "00066667,Solve X,01000011\n"
+            "000b53cf,Solve Y,cat imagines book\n"
+        )
+        c = DataConfig(path=str(f), prompt_field="prompt", answer_field="answer")
+        puzzles = load_puzzles(c)
+        assert [p.id for p in puzzles] == ["00066667", "000b53cf"]
+        assert puzzles[0].answer == "01000011"  # not coerced to int 1000011
+        assert puzzles[1].answer == "cat imagines book"
+
 
 class TestSplit:
     def test_split_is_disjoint_and_complete(self, cfg):

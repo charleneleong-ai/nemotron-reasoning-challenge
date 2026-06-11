@@ -1,4 +1,4 @@
-"""Typer CLI: prepare | train | eval | package."""
+"""Typer CLI: download | prepare | train | eval | package."""
 
 from pathlib import Path
 
@@ -14,6 +14,15 @@ app = typer.Typer(
     no_args_is_help=True,
     pretty_exceptions_enable=False,
 )
+
+
+@app.command()
+def download() -> None:
+    """Download + extract the Kaggle competition data into data/ (reads KAGGLE_API_TOKEN from .env)."""
+    from src.data.download import download_dataset
+
+    dest = download_dataset()
+    rich_print(f"[green]data ready[/green] -> {dest}")
 
 
 @app.command()

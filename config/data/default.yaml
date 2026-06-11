@@ -1,5 +1,5 @@
-path: data/problems.jsonl
-prompt_field: problem
+path: data/train.csv
+prompt_field: prompt
 answer_field: answer
 eval_fraction: 0.1
 seed: 42
