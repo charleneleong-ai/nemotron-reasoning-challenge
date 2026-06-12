@@ -74,10 +74,30 @@ class TestSplit:
 
 
 class TestFormatTarget:
-    def test_thinking_mode_and_boxed(self):
+    def test_empty_think_block_and_boxed(self):
         out = format_target("42")
         assert "<think>" in out and "</think>" in out
         assert r"\boxed{42}" in out
+        assert "reasoning here" not in out
+
+    def test_includes_think_trace(self):
+        out = format_target("42", "double the input: 21*2 = 42")
+        assert "double the input: 21*2 = 42" in out
+        assert r"\boxed{42}" in out
+
+
+class TestCotJoin:
+    def test_load_puzzles_attaches_think_by_id(self, tmp_path):
+        data = tmp_path / "p.jsonl"
+        data.write_text(
+            '{"id": "p1", "prompt": "Q1", "answer": "1"}\n'
+            '{"id": "p2", "prompt": "Q2", "answer": "2"}\n'
+        )
+        cot = tmp_path / "cot.jsonl"
+        cot.write_text('{"id": "p1", "think": "reason for p1"}\n')
+        c = DataConfig(path=str(data), cot_path=str(cot))
+        by_id = {p.id: p.think for p in load_puzzles(c)}
+        assert by_id == {"p1": "reason for p1", "p2": ""}
 
 
 @pytest.mark.slow
@@ -86,6 +106,12 @@ class TestChatFormat:
         text = to_sft_text(Puzzle("x", "What is 2+2?", "4"), proxy_tokenizer)
         assert "What is 2+2?" in text
         assert r"\boxed{4}" in text
+
+    def test_sft_text_includes_think_trace(self, proxy_tokenizer):
+        text = to_sft_text(
+            Puzzle("x", "What is 2+2?", "4", think="add two and two"), proxy_tokenizer
+        )
+        assert "add two and two" in text and r"\boxed{4}" in text
 
     def test_inference_prompt_omits_target(self, proxy_tokenizer):
         text = build_inference_prompt("What is 2+2?", proxy_tokenizer)

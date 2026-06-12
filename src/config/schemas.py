@@ -21,6 +21,8 @@ class DataConfig(BaseModel):
     path: str
     prompt_field: str = "prompt"
     answer_field: str = "answer"
+    # Optional CoT jsonl ({id, think}); when set, traces fill the <think> block in SFT.
+    cot_path: str | None = None
     eval_fraction: float = Field(0.1, gt=0.0, lt=1.0)
     seed: int = 42
     max_samples: int | None = Field(None, gt=0)
