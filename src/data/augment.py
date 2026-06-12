@@ -84,14 +84,21 @@ def load_done_ids(path: Path) -> set[str]:
     }
 
 
-def gemini_generator(model: str, api_key: str) -> CoTGenerator:
-    """Build an async generate_fn backed by the google-genai SDK."""
+def gemini_generator(model: str, api_key: str, timeout: float = 60.0) -> CoTGenerator:
+    """Build an async generate_fn backed by the google-genai SDK.
+
+    Each call is bounded by `timeout` so a hung/rate-limited request fails fast (it's then
+    omitted and retried on the next resumable run) instead of blocking a concurrency slot.
+    """
     from google import genai
 
     client = genai.Client(api_key=api_key)
 
     async def _gen(prompt: str) -> str:
-        resp = await client.aio.models.generate_content(model=model, contents=prompt)
+        resp = await asyncio.wait_for(
+            client.aio.models.generate_content(model=model, contents=prompt),
+            timeout=timeout,
+        )
         return resp.text or ""
 
     return _gen
