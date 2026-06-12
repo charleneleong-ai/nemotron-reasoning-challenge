@@ -7,6 +7,7 @@ from src.data.augment import (
     build_cot_prompt,
     clean_think,
     generate_cot,
+    load_done_ids,
     merge_cot,
     write_cot,
 )
@@ -57,6 +58,24 @@ class TestGenerateCot:
             return r"<think></think>\boxed{12}"
 
         assert asyncio.run(generate_cot(PUZZLES[:1], empty)) == {}
+
+    def test_on_result_fires_per_trace(self):
+        async def fake(prompt):
+            return "trace"
+
+        seen = []
+        asyncio.run(
+            generate_cot(PUZZLES, fake, on_result=lambda p, t: seen.append((p.id, t)))
+        )
+        assert sorted(seen) == [("a", "trace"), ("b", "trace")]
+
+
+class TestResume:
+    def test_load_done_ids(self, tmp_path):
+        path = tmp_path / "cot.jsonl"
+        assert load_done_ids(path) == set()  # missing file -> empty
+        path.write_text('{"id": "a", "think": "x"}\n{"id": "b", "think": "y"}\n')
+        assert load_done_ids(path) == {"a", "b"}
 
 
 class TestWriteAndMerge:

@@ -1,4 +1,4 @@
-"""Typer CLI: download | prepare | train | eval | package."""
+"""Typer CLI: download | augment | prepare | train | eval | package | submit."""
 
 from pathlib import Path
 
@@ -33,21 +33,44 @@ def augment(
     ),
     out: str = typer.Option("data/cot.jsonl", help="Output jsonl of CoT traces."),
 ) -> None:
-    """Generate synthetic <think> CoT traces via Gemini (reads GEMINI_API_KEY from .env)."""
+    """Generate synthetic <think> CoT traces via Gemini (reads GEMINI_API_KEY from .env).
+
+    Resumable: appends to `out` and skips puzzles already present, so re-running fills gaps.
+    """
     import asyncio
+    import json
 
     from src.config.settings import settings
-    from src.data.augment import gemini_generator, generate_cot, write_cot
-    from src.data.puzzles import load_puzzles
+    from src.data.augment import gemini_generator, generate_cot, load_done_ids
+    from src.data.puzzles import Puzzle, load_puzzles
 
     if settings.GEMINI_API_KEY is None:
         raise RuntimeError("GEMINI_API_KEY (or GOOGLE_API_KEY) not set in .env")
     cfg = load_experiment_config(overrides)
-    puzzles = load_puzzles(cfg.data)
+    out_path = Path(out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    done = load_done_ids(out_path)
+    todo = [p for p in load_puzzles(cfg.data) if p.id not in done]
+    rich_print(
+        f"[cyan]{len(todo)} to generate[/cyan] ({len(done)} already done) -> {out}"
+    )
+
     gen = gemini_generator(model, settings.GEMINI_API_KEY.get_secret_value())
-    cot = asyncio.run(generate_cot(puzzles, gen))
-    n = write_cot(puzzles, cot, Path(out))
-    rich_print(f"[green]wrote[/green] {n}/{len(puzzles)} CoT traces -> {out}")
+    with out_path.open("a") as fh:
+
+        def _write(p: Puzzle, think: str) -> None:
+            fh.write(
+                json.dumps(
+                    {"id": p.id, "prompt": p.prompt, "answer": p.answer, "think": think}
+                )
+                + "\n"
+            )
+            fh.flush()
+
+        asyncio.run(generate_cot(todo, gen, on_result=_write))
+    rich_print(
+        f"[green]done[/green] {len(load_done_ids(out_path))} total CoT traces -> {out}"
+    )
 
 
 @app.command()

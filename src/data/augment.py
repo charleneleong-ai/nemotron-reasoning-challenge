@@ -46,8 +46,13 @@ async def generate_cot(
     puzzles: list[Puzzle],
     generate_fn: CoTGenerator,
     concurrency: int = 8,
+    on_result: Callable[[Puzzle, str], None] | None = None,
 ) -> dict[str, str]:
-    """Map puzzle id -> cleaned reasoning trace. Failed/empty generations are omitted."""
+    """Map puzzle id -> cleaned reasoning trace. Failed/empty generations are omitted.
+
+    `on_result(puzzle, think)` fires as each trace lands — pass a jsonl writer for
+    crash-resilient, resumable runs over large sets.
+    """
     sem = asyncio.Semaphore(concurrency)
     out: dict[str, str] = {}
 
@@ -61,9 +66,22 @@ async def generate_cot(
         think = clean_think(raw)
         if think:
             out[p.id] = think
+            if on_result is not None:
+                on_result(p, think)
 
     await asyncio.gather(*(_one(p) for p in puzzles))
     return out
+
+
+def load_done_ids(path: Path) -> set[str]:
+    """Ids already present in a CoT jsonl — skip these to resume a partial run."""
+    if not path.exists():
+        return set()
+    return {
+        str(json.loads(line)["id"])
+        for line in path.read_text().splitlines()
+        if line.strip()
+    }
 
 
 def gemini_generator(model: str, api_key: str) -> CoTGenerator:
