@@ -19,6 +19,7 @@ dependencies = [
   "tqdm>=4.67.0",
   "kaggle>=2.2.1",
   "python-dotenv>=1.2.2",
+  "google-genai>=2.8.0",
 ]
 
 [project.optional-dependencies]

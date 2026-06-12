@@ -26,6 +26,31 @@ def download() -> None:
 
 
 @app.command()
+def augment(
+    overrides: list[str] = typer.Argument(None),
+    model: str = typer.Option(
+        "gemini-3.1-flash-lite", help="Gemini model for CoT generation."
+    ),
+    out: str = typer.Option("data/cot.jsonl", help="Output jsonl of CoT traces."),
+) -> None:
+    """Generate synthetic <think> CoT traces via Gemini (reads GEMINI_API_KEY from .env)."""
+    import asyncio
+
+    from src.config.settings import settings
+    from src.data.augment import gemini_generator, generate_cot, write_cot
+    from src.data.puzzles import load_puzzles
+
+    if settings.GEMINI_API_KEY is None:
+        raise RuntimeError("GEMINI_API_KEY (or GOOGLE_API_KEY) not set in .env")
+    cfg = load_experiment_config(overrides)
+    puzzles = load_puzzles(cfg.data)
+    gen = gemini_generator(model, settings.GEMINI_API_KEY.get_secret_value())
+    cot = asyncio.run(generate_cot(puzzles, gen))
+    n = write_cot(puzzles, cot, Path(out))
+    rich_print(f"[green]wrote[/green] {n}/{len(puzzles)} CoT traces -> {out}")
+
+
+@app.command()
 def prepare(overrides: list[str] = typer.Argument(None)) -> None:
     """Load + split puzzles, print dataset stats."""
     cfg = load_experiment_config(overrides)
