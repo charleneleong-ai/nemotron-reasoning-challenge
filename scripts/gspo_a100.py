@@ -5,9 +5,10 @@ there's no 12h cap. Produces `submission.zip` (the rank-<=32 adapter) to submit 
 
     pip install -e ".[gpu]" trl vllm kagglehub mamba-ssm causal-conv1d
     export KAGGLE_API_TOKEN=...            # for kagglehub model + (optional) submit
-    python scripts/gspo_a100.py --adapter path/to/sft_adapter_dir   # warm-start from 0.61
+    python scripts/gspo_a100.py --adapter path/to/sft_adapter_dir            # train only
+    python scripts/gspo_a100.py --adapter path/to/sft_adapter_dir --submit   # train + submit
 
-Then submit (from here or the box):  uv run main submit   /   kaggle competitions submit -f submission.zip
+Or submit separately:  uv run main submit   /   kaggle competitions submit -f submission.zip
 
 GSPO = sequence-level importance sampling (MoE-stable) — set via importance_sampling_level.
 """
@@ -54,6 +55,11 @@ def main(
     use_vllm: bool = typer.Option(
         True, help="vLLM rollouts (fast). Set False if vLLM lacks Nemotron support."
     ),
+    submit: bool = typer.Option(
+        False,
+        help="After training, submit submission.zip to Kaggle (needs KAGGLE_API_TOKEN).",
+    ),
+    message: str = typer.Option("GSPO RLVR (A100)", help="Kaggle submission message."),
 ) -> None:
     """GSPO RL on a CUDA box; writes a rank<=32 adapter + submission.zip."""
     import kagglehub
@@ -118,6 +124,12 @@ def main(
 
     zip_path = _package(Path(out))
     rich_print(f"[green]done.[/green] adapter -> {out} | submission -> {zip_path}")
+
+    if submit:
+        from src.submission.submit import submit as submit_zip
+
+        submit_zip(zip_path, message)
+        rich_print("[green]submitted[/green] to Kaggle")
 
 
 def _build_dataset(puzzles: list, tokenizer: object) -> object:
