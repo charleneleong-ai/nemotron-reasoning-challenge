@@ -12,8 +12,10 @@
 model = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
 loss = "rl"
 
-max_steps = 100
-batch_size = 64
+# Budget-fit: ~$16-18 worst-case on the $25 wallet (smoke = $0.33/3 steps @ batch16, with
+# oversampling). Extend via `prime train restart <run_id>` if it's learning + budget remains.
+max_steps = 50
+batch_size = 48
 rollouts_per_example = 8     # GRPO group: within-prompt reward variance
 learning_rate = 1e-5
 lora_alpha = 32
