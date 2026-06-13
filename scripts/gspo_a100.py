@@ -15,10 +15,14 @@ GSPO = sequence-level importance sampling (MoE-stable) — set via importance_sa
 
 import zipfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import torch
 import typer
 from rich import print as rich_print
+
+if TYPE_CHECKING:
+    from datasets import Dataset
 
 from src.config.schemas import DataConfig
 from src.data.puzzles import build_inference_prompt, load_puzzles
@@ -47,6 +51,12 @@ def main(
     ),
     lora_rank: int = typer.Option(32, help="LoRA rank (<=32) if training from base."),
     num_generations: int = typer.Option(8, help="GSPO group size G."),
+    per_device_batch: int = typer.Option(
+        2, help="Completions per micro-step (lower = less mem; must divide G)."
+    ),
+    grad_checkpointing: bool = typer.Option(
+        True, help="Recompute activations in backward — big mem saver, ~20-30% slower."
+    ),
     max_prompts: int = typer.Option(2000, help="Train prompts subset."),
     max_steps: int = typer.Option(500, help="GSPO optimizer steps."),
     max_completion_len: int = typer.Option(1024),
@@ -62,6 +72,11 @@ def main(
     message: str = typer.Option("GSPO RLVR (A100)", help="Kaggle submission message."),
 ) -> None:
     """GSPO RL on a CUDA box; writes a rank<=32 adapter + submission.zip."""
+    if num_generations % per_device_batch:
+        raise typer.BadParameter(
+            f"per_device_batch ({per_device_batch}) must divide num_generations ({num_generations})"
+        )
+
     import kagglehub
     from peft import LoraConfig, PeftModel
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -73,7 +88,7 @@ def main(
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     model = AutoModelForCausalLM.from_pretrained(
-        base, device_map="auto", trust_remote_code=True, dtype=torch.bfloat16
+        base, device_map="auto", trust_remote_code=True, torch_dtype=torch.bfloat16
     )
 
     if adapter:
@@ -104,8 +119,10 @@ def main(
         learning_rate=lr,
         beta=beta,
         max_steps=max_steps,
-        per_device_train_batch_size=num_generations,
-        gradient_accumulation_steps=1,
+        per_device_train_batch_size=per_device_batch,
+        gradient_accumulation_steps=num_generations // per_device_batch,
+        gradient_checkpointing=grad_checkpointing,
+        gradient_checkpointing_kwargs={"use_reentrant": False},
         logging_steps=1,
         save_strategy="no",
         report_to=[],
@@ -115,6 +132,7 @@ def main(
     trainer = GRPOTrainer(
         model=model,
         args=cfg,
+        processing_class=tokenizer,
         reward_funcs=[boxed_reward, format_reward],
         train_dataset=ds,
         peft_config=peft_config,
@@ -132,7 +150,7 @@ def main(
         rich_print("[green]submitted[/green] to Kaggle")
 
 
-def _build_dataset(puzzles: list, tokenizer: object) -> object:
+def _build_dataset(puzzles: list, tokenizer: object) -> "Dataset":
     from datasets import Dataset
 
     return Dataset.from_list(
