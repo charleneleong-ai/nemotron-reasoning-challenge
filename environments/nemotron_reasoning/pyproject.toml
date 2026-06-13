@@ -2,7 +2,7 @@
 name = "nemotron-reasoning"
 description = "Single-turn RLVR env: reasoning puzzle -> boxed answer, grader-as-verifier."
 tags = ["reasoning", "math", "single-turn", "train", "eval"]
-version = "0.1.1"
+version = "0.1.2"
 requires-python = ">=3.11"
 dependencies = [
     "verifiers>=0.1.14",

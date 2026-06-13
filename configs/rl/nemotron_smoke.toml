@@ -1,0 +1,29 @@
+# Cheap validation gate for the hosted GRPO setup: 3 steps, tiny batch.
+# Confirms the env runs on Prime (rewards non-zero) and produces an adapter to inspect
+# for rank <= 32 (Kaggle cap) before committing budget to configs/rl/nemotron.toml.
+#
+#   prime train configs/rl/nemotron_smoke.toml --yes
+#   prime train checkpoints <run_id> --status READY -o json   # -> storage_url, inspect r
+model = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+loss = "rl"
+
+max_steps = 3
+batch_size = 16
+rollouts_per_example = 4
+learning_rate = 1e-5
+lora_alpha = 32
+
+[sampling]
+max_tokens = 4096            # reasoning headroom: finish <think> + boxed answer
+enable_thinking = true
+
+[[env]]
+id = "chaleong/nemotron-reasoning"
+args = { n_tasks = 64, format_weight = 0.1 }
+
+[adapters]
+interval = 1
+keep_last = 3
+
+[checkpoints]
+interval = 1

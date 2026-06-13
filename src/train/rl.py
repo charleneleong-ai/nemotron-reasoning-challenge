@@ -12,9 +12,9 @@ from typing import Any
 
 from src.eval.boxed import extract_boxed, score
 
-_THINK_THEN_BOXED = re.compile(
-    r"<think>.*?</think>.*?\\boxed\{.*?\}", re.IGNORECASE | re.DOTALL
-)
+# Nemotron's chat template prefills "<think>\n" into the prompt, so the completion contains
+# only the closing "</think>" — match on that + a boxed answer, not an opening tag.
+_THINK_THEN_BOXED = re.compile(r"</think>.*?\\boxed\{.*?\}", re.IGNORECASE | re.DOTALL)
 
 
 def _text(completion: Any) -> str:
@@ -35,5 +35,5 @@ def boxed_reward(completions: list[Any], answer: list[str], **_: Any) -> list[fl
 
 
 def format_reward(completions: list[Any], **_: Any) -> list[float]:
-    """Small shaping reward: 1.0 if the completion has <think>…</think> then a \\boxed{}."""
+    """Small shaping reward: 1.0 if the completion closes </think> then has a \\boxed{}."""
     return [1.0 if _THINK_THEN_BOXED.search(_text(c)) else 0.0 for c in completions]

@@ -21,9 +21,9 @@ import verifiers as vf
 from datasets import Dataset
 
 _DATA = Path(__file__).parent / "data" / "train.csv"
-_THINK_THEN_BOXED = re.compile(
-    r"<think>.*?</think>.*?\\boxed\{.*?\}", re.IGNORECASE | re.DOTALL
-)
+# Nemotron's chat template PREFILLS "<think>\n" into the prompt, so the opening tag is never
+# in the completion — only the model's closing "</think>" is. Match on that + a boxed answer.
+_CLOSED_THEN_BOXED = re.compile(r"</think>.*?\\boxed\{.*?\}", re.IGNORECASE | re.DOTALL)
 
 
 def extract_boxed(text: str) -> str | None:
@@ -73,8 +73,8 @@ def boxed_reward(completion: Any, answer: str, **_: Any) -> float:
 
 
 def format_reward(completion: Any, **_: Any) -> float:
-    """1.0 if the completion has ``<think>…</think>`` then a ``\\boxed{}``."""
-    return 1.0 if _THINK_THEN_BOXED.search(_text(completion)) else 0.0
+    """1.0 if the completion closes thinking (``</think>``) then emits a ``\\boxed{}``."""
+    return 1.0 if _CLOSED_THEN_BOXED.search(_text(completion)) else 0.0
 
 
 def _rows(path: Path, n_tasks: int | None, start: int) -> list[dict[str, Any]]:
