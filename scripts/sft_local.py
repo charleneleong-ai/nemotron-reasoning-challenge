@@ -26,9 +26,11 @@ KAGGLE_MODEL = "metric/nemotron-3-nano-30b-a3b-bf16/transformers/default"
 TARGET_MODULES = ["in_proj", "out_proj", "up_proj", "down_proj"]
 
 
-def format_target(answer: str, think: str) -> str:
-    """Assistant turn: reasoning then boxed answer (the format that scored 0.61/0.62)."""
-    return f"<think>\n{think.strip()}\n</think>\n\n\\boxed{{{answer}}}"
+def completion_text(answer: str, think: str) -> str:
+    """Assistant continuation AFTER the template's prefilled `<think>\\n`: the reasoning,
+    the closing tag, then the boxed answer. Concatenated with the prompt this yields
+    `<think>\\n{think}\\n</think>\\n\\n\\boxed{answer}` — exactly the inference shape."""
+    return f"{think.strip()}\n</think>\n\n\\boxed{{{answer}}}"
 
 
 def _patch_nemotron_moe(model: Any) -> None:
@@ -117,19 +119,21 @@ def main(
     rows = [json.loads(line) for line in Path(data_path).open()]
     if max_rows:
         rows = rows[:max_rows]
+
+    def _prompt(p: str) -> str:  # ends with the prefilled "<think>\n"
+        return tokenizer.apply_chat_template(
+            [{"role": "user", "content": p}], tokenize=False, add_generation_prompt=True
+        )
+
+    # prompt/completion split + completion_only_loss masks the (high-entropy, unlearnable)
+    # puzzle prompt and trains ONLY on the reasoning + boxed answer. The reasoning lands
+    # inside the prefilled <think> — matching inference — which the messages API can't do
+    # here (this template renders assistant content after an empty <think></think>).
     ds = Dataset.from_list(
         [
             {
-                "text": tokenizer.apply_chat_template(
-                    [
-                        {"role": "user", "content": r["prompt"]},
-                        {
-                            "role": "assistant",
-                            "content": format_target(r["answer"], r["think"]),
-                        },
-                    ],
-                    tokenize=False,
-                )
+                "prompt": _prompt(r["prompt"]),
+                "completion": completion_text(r["answer"], r["think"]),
             }
             for r in rows
         ]
@@ -151,7 +155,7 @@ def main(
         save_total_limit=1,
         report_to=[],
         bf16=True,
-        dataset_text_field="text",
+        completion_only_loss=True,  # mask the prompt; train only on the reasoning + boxed answer
     )
     trainer = SFTTrainer(
         model=model, args=cfg, processing_class=tokenizer, train_dataset=ds
