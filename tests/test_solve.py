@@ -37,14 +37,14 @@ def test_grade_scores_only_known_categories() -> None:
         {"category": "numeral", "prompt": _NUMERAL_PROMPT, "answer": "XXXVIII"},
         {"category": "numeral", "prompt": _NUMERAL_PROMPT, "answer": "WRONG"},
         {
-            "category": "bit_manipulation",
+            "category": "equation_numeric",
             "prompt": "...",
             "answer": "x",
         },  # no solver yet
     ]
     results = grade(rows)
     assert results["numeral"] == (1, 2)
-    assert "bit_manipulation" not in results
+    assert "equation_numeric" not in results
 
 
 _GRAVITY_PROMPT = (
@@ -128,3 +128,25 @@ def test_build_corpus_source_selection() -> None:
     assert [e["id"] for e in corpus] == ["a", "b"]
     assert corpus[0]["completion"] == "base trace \\boxed{XXXVIII}"
     assert corpus[1]["completion"].endswith("\\boxed{XXXVIII}")
+
+
+_BITMANIP_PROMPT = (
+    "In Alice's Wonderland, a secret bit manipulation rule transforms 8-bit binary numbers.\n"
+    "Here are some examples of input -> output:\n"
+    "00000000 -> 11111111\n10101010 -> 01010101\n11001100 -> 00110011\n"
+    "11110000 -> 00001111\n00001111 -> 11110000\n10000001 -> 01111110\n"
+    "Now, determine the output for: 11111110"
+)
+
+
+def test_solve_bit_manipulation_recovers_not_rule() -> None:
+    """A clean NOT rule is uniquely identified from the examples."""
+    from src.solve.bit_manipulation import solve_bit_manipulation
+
+    assert solve_bit_manipulation(_BITMANIP_PROMPT) == "00000001"
+
+
+def test_solve_bit_manipulation_abstains_when_ambiguous() -> None:
+    from src.solve.bit_manipulation import solve_bit_manipulation
+
+    assert solve_bit_manipulation("no examples, output for: 11111111") is None

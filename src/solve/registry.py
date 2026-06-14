@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from src.solve import cipher, gravity, numeral, unit_conversion
+from src.solve import bit_manipulation, cipher, gravity, numeral, unit_conversion
 
 
 @dataclass(frozen=True)
@@ -26,6 +26,11 @@ SOLVERS: dict[str, Solver] = {
     for s in (
         Solver("numeral", numeral.solve_numeral, numeral.reason_numeral),
         Solver("cipher", cipher.solve_cipher, cipher.reason_cipher),
+        Solver(
+            "bit_manipulation",
+            bit_manipulation.solve_bit_manipulation,
+            bit_manipulation.reason_bit_manipulation,
+        ),
         Solver("gravity", gravity.solve_gravity, gravity.reason_gravity),
         Solver(
             "unit_conversion",
