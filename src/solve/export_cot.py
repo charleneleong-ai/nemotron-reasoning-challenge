@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 
 from src.data.categories import classify
-from src.solve.registry import SOLVERS
+from src.solve.registry import SOLVERS, matches
 
 
 def _think(trace: str) -> str:
@@ -29,7 +29,7 @@ def upgrade(rows: list[dict[str, str]]) -> int:
         solver = SOLVERS.get(classify(row["prompt"]) or "")
         if solver is None:
             continue
-        if (solver.solve(row["prompt"]) or "").strip() != str(row["answer"]).strip():
+        if not matches(solver.solve(row["prompt"]), str(row["answer"])):
             continue
         trace = solver.reason(row["prompt"])
         if trace is not None:

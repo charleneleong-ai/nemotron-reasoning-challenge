@@ -11,7 +11,7 @@ import csv
 from collections import defaultdict
 from pathlib import Path
 
-from src.solve.registry import SOLVERS
+from src.solve.registry import SOLVERS, matches
 
 
 def grade(rows: list[dict[str, str]]) -> dict[str, tuple[int, int]]:
@@ -22,7 +22,7 @@ def grade(rows: list[dict[str, str]]) -> dict[str, tuple[int, int]]:
         if solver is None:
             continue
         score[row["category"]][1] += 1
-        if (solver.solve(row["prompt"]) or "").strip() == row["answer"].strip():
+        if matches(solver.solve(row["prompt"]), row["answer"]):
             score[row["category"]][0] += 1
     return {cat: (c, t) for cat, (c, t) in score.items()}
 

@@ -17,7 +17,7 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from src.solve.registry import SOLVERS
+from src.solve.registry import SOLVERS, matches
 
 csv.field_size_limit(10**8)
 
@@ -30,7 +30,7 @@ def build_corpus(traj_rows: list[dict[str, str]]) -> list[dict[str, str]]:
             out.append(_entry(r["id"], prompt, r["generated"], "base", cat))
             continue
         solver = SOLVERS.get(cat)
-        if solver and (solver.solve(prompt) or "").strip() == gold:
+        if solver and matches(solver.solve(prompt), gold):
             trace = solver.reason(prompt)
             if trace is not None:
                 out.append(_entry(r["id"], prompt, trace, "solver", cat))

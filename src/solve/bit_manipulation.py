@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from itertools import combinations
 
 _EX = re.compile(r"([01]{8})\s*->\s*([01]{8})")
 _TARGET = re.compile(r"output for:\s*([01]{8})", re.IGNORECASE)
@@ -96,21 +97,62 @@ def _infer(prompt: str) -> tuple[int, str] | None:
     return preds.pop(), rule or "a fixed bit operation"
 
 
+def _perbit(prompt: str) -> tuple[int, str] | None:
+    """Fallback: model each output bit as the smallest functional subset of input bits.
+
+    Less constrained than the global DSL (a small subset can fit 8 examples spuriously),
+    so this is gold-guarded upstream — only outputs matching the known answer become SFT
+    traces. Covers per-bit gates (AND/OR/majority/choice) the word-level DSL can't express.
+    """
+    pairs = _EX.findall(prompt)
+    target = _TARGET.search(prompt)
+    if not pairs or target is None:
+        return None
+    ins = [tuple(int(c) for c in i) for i, _ in pairs]
+    outs = [tuple(int(c) for c in o) for _, o in pairs]
+    qin = tuple(int(c) for c in target.group(1))
+    bits: list[int] = []
+    for j in range(8):
+        tgt = [o[j] for o in outs]
+        pred = None
+        for k in range(1, 4):
+            for subset in combinations(range(8), k):
+                table: dict[tuple[int, ...], int] = {}
+                ok = True
+                for i, inp in enumerate(ins):
+                    key = tuple(inp[s] for s in subset)
+                    if table.setdefault(key, tgt[i]) != tgt[i]:
+                        ok = False
+                        break
+                if ok and (qk := tuple(qin[s] for s in subset)) in table:
+                    pred = table[qk]
+                    break
+            if pred is not None:
+                break
+        if pred is None:
+            return None
+        bits.append(pred)
+    return int("".join(map(str, bits)), 2), "per-output-bit logic over the input bits"
+
+
+def _solve(prompt: str) -> tuple[int, str] | None:
+    return _infer(prompt) or _perbit(prompt)
+
+
 def solve_bit_manipulation(prompt: str) -> str | None:
-    got = _infer(prompt)
+    got = _solve(prompt)
     return f"{got[0]:08b}" if got else None
 
 
 def reason_bit_manipulation(prompt: str) -> str | None:
     """A correct chain-of-thought trace ending in \\boxed{} for a bit-manipulation puzzle."""
-    got = _infer(prompt)
+    got = _solve(prompt)
     if got is None:
         return None
     out, rule = got
     return (
-        "The transform is a fixed bit operation. Searching shifts, rotations, NOT, "
-        f"reverse and their XOR/AND/OR combinations, the rule consistent with every "
-        f"example is: {rule}.\n"
+        "The transform is a fixed bit rule. The rule consistent with every example is: "
+        f"{rule}.\n"
         f"Applying it to the query gives {out:08b}.\n"
         f"\\boxed{{{out:08b}}}"
     )
