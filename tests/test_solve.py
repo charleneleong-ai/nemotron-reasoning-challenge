@@ -97,6 +97,7 @@ def test_build_corpus_source_selection() -> None:
     rows = [
         # base correct -> keep base completion
         {
+            "id": "a",
             "problem type": "numeral",
             "prompt": _NUMERAL_PROMPT,
             "correct answer": "XXXVIII",
@@ -105,6 +106,7 @@ def test_build_corpus_source_selection() -> None:
         },
         # base wrong, solver correct -> solver trace
         {
+            "id": "b",
             "problem type": "numeral",
             "prompt": _NUMERAL_PROMPT,
             "correct answer": "XXXVIII",
@@ -113,7 +115,8 @@ def test_build_corpus_source_selection() -> None:
         },
         # base wrong, no solver -> skipped
         {
-            "problem type": "cipher",
+            "id": "c",
+            "problem type": "bit_manipulation",
             "prompt": "...",
             "correct answer": "x",
             "generated": "wrong",
@@ -122,5 +125,6 @@ def test_build_corpus_source_selection() -> None:
     ]
     corpus = build_corpus(rows)
     assert [e["source"] for e in corpus] == ["base", "solver"]
+    assert [e["id"] for e in corpus] == ["a", "b"]
     assert corpus[0]["completion"] == "base trace \\boxed{XXXVIII}"
     assert corpus[1]["completion"].endswith("\\boxed{XXXVIII}")

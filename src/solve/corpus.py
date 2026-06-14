@@ -27,18 +27,21 @@ def build_corpus(traj_rows: list[dict[str, str]]) -> list[dict[str, str]]:
     for r in traj_rows:
         cat, prompt, gold = r["problem type"], r["prompt"], r["correct answer"].strip()
         if r["correctness"] == "true":
-            out.append(_entry(prompt, r["generated"], "base", cat))
+            out.append(_entry(r["id"], prompt, r["generated"], "base", cat))
             continue
         solver = SOLVERS.get(cat)
         if solver and (solver.solve(prompt) or "").strip() == gold:
             trace = solver.reason(prompt)
             if trace is not None:
-                out.append(_entry(prompt, trace, "solver", cat))
+                out.append(_entry(r["id"], prompt, trace, "solver", cat))
     return out
 
 
-def _entry(prompt: str, completion: str, source: str, category: str) -> dict[str, str]:
+def _entry(
+    pid: str, prompt: str, completion: str, source: str, category: str
+) -> dict[str, str]:
     return {
+        "id": pid,
         "prompt": prompt,
         "completion": completion,
         "source": source,
