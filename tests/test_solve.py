@@ -2,6 +2,7 @@
 
 import pytest
 
+from src.solve.cipher import solve_cipher
 from src.solve.corpus import build_corpus
 from src.solve.grade import grade
 from src.solve.gravity import reason_gravity, solve_gravity
@@ -35,11 +36,15 @@ def test_grade_scores_only_known_categories() -> None:
     rows = [
         {"category": "numeral", "prompt": _NUMERAL_PROMPT, "answer": "XXXVIII"},
         {"category": "numeral", "prompt": _NUMERAL_PROMPT, "answer": "WRONG"},
-        {"category": "cipher", "prompt": "...", "answer": "x"},  # no solver yet
+        {
+            "category": "bit_manipulation",
+            "prompt": "...",
+            "answer": "x",
+        },  # no solver yet
     ]
     results = grade(rows)
     assert results["numeral"] == (1, 2)
-    assert "cipher" not in results
+    assert "bit_manipulation" not in results
 
 
 _GRAVITY_PROMPT = (
@@ -66,6 +71,26 @@ def test_verbalizer_boxes_the_solver_answer(reason, solve, prompt) -> None:
     """Every trace must end in \\boxed{} carrying the solver's own answer."""
     trace = reason(prompt)
     assert trace.rstrip().endswith(f"\\boxed{{{solve(prompt)}}}")
+
+
+_CIPHER_PROMPT = (
+    "In Alice's Wonderland, secret encryption rules are used on text. Here are some examples:\n"
+    "ucoov pwgtfyoqg vorq yrjjoe -> queen discovers near valley\n"
+    "pqrsfv pqorzg wvgwpo trgbjo -> dragon dreams inside castle\n"
+    "gbcpovb tqorbog bxo zrswtrj pffq -> student creates the magical door\n"
+    "bxo sfjpov pqrsfv dfjjfig -> the golden dragon follows\n"
+    "nqwvtogg qorpg bxo zegboqwfcg gotqob -> princess reads the mysterious secret\n"
+    "Now, decrypt the following text: trb wzrswvog hffk"
+)
+
+
+def test_solve_cipher_infers_unseen_letters_via_vocab() -> None:
+    """'book' needs letters absent from the examples — vocab matching recovers them."""
+    assert solve_cipher(_CIPHER_PROMPT) == "cat imagines book"
+
+
+def test_solve_cipher_no_target_returns_none() -> None:
+    assert solve_cipher("no decrypt instruction here -> mapping") is None
 
 
 def test_build_corpus_source_selection() -> None:

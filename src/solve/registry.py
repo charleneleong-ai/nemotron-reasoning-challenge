@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from src.solve import gravity, numeral, unit_conversion
+from src.solve import cipher, gravity, numeral, unit_conversion
 
 
 @dataclass(frozen=True)
@@ -25,6 +25,7 @@ SOLVERS: dict[str, Solver] = {
     s.category: s
     for s in (
         Solver("numeral", numeral.solve_numeral, numeral.reason_numeral),
+        Solver("cipher", cipher.solve_cipher, cipher.reason_cipher),
         Solver("gravity", gravity.solve_gravity, gravity.reason_gravity),
         Solver(
             "unit_conversion",
