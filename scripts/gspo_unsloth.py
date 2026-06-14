@@ -1,9 +1,15 @@
-"""Round-two GSPO RLVR on a single A100 80GB via Unsloth (4-bit + colocated vLLM).
+"""Round-two GSPO RLVR on a single A100 80GB via Unsloth (bf16 + HF generation).
 
-Unlike the bf16 TRL path (which OOMs or runs uncached/slow) and Prime hosted (GRPO-only,
-opaque rank), Unsloth fits the 30B NemotronH MoE on one card in 4-bit with vLLM sharing the
-same quantized weights — so we get fast rollouts AND true GSPO (sequence-level importance
-sampling) AND a controllable rank<=32 adapter we can submit to Kaggle directly.
+Runs true GSPO (sequence-level importance sampling) on the 30B NemotronH MoE with a
+controllable rank<=32 adapter we can submit to Kaggle directly.
+
+bf16, NOT 4-bit: bitsandbytes 4-bit is fundamentally incompatible with NemotronH's custom
+Mamba2/MoE modules — the fused Mamba kernel passes raw `out_proj.weight` to a CUDA kernel
+and the experts route through custom forwards that bnb's Linear4bit replacement never wraps,
+so a packed uint8 weight reaches a stock `F.linear` (`unsigned char != BFloat16`). Three
+distinct crash sites, one root cause; see logs/AUTONOMY_PLAN.md. bf16 sidesteps bnb entirely.
+The 30B (~60GB) base fits on the 80GB card with LoRA + Unsloth grad-checkpointing; rollouts
+use HF generation (vLLM colocate needs a second weight copy that doesn't fit at bf16).
 
     .venv-unsloth/bin/python scripts/gspo_unsloth.py --max-steps 5 --max-prompts 64   # smoke
     .venv-unsloth/bin/python scripts/gspo_unsloth.py                                   # full
@@ -79,6 +85,38 @@ def format_reward(completions: list[Any], **_: Any) -> list[float]:
     return [1.0 if _CLOSED_THEN_BOXED.search(_text(c)) else 0.0 for c in completions]
 
 
+def _patch_nemotron_moe(model: Any) -> None:
+    """Fix NemotronH's MoE dtype bug under mixed precision (4-bit): the expert output is
+    float32 while the accumulator is bf16, so `index_add_` raises a scalar-type mismatch.
+    Recompile the `moe` method with a `.to(dtype)` cast — in-process, no editing of the
+    package's cached modeling file.
+    """
+    import inspect
+    import textwrap
+
+    bad = "final_hidden_states.index_add_(0, token_indices, weighted_output)"
+    fix = "final_hidden_states.index_add_(0, token_indices, weighted_output.to(final_hidden_states.dtype))"
+    for module in model.modules():
+        cls = type(module)
+        if getattr(cls, "_moe_dtype_fixed", False) or not hasattr(cls, "moe"):
+            continue
+        try:
+            src = textwrap.dedent(inspect.getsource(cls.moe))
+        except (OSError, TypeError):
+            continue
+        if bad not in src:
+            continue
+        ns: dict[str, Any] = {}
+        exec(
+            compile(src.replace(bad, fix), "<moe_patch>", "exec"),
+            cls.moe.__globals__,
+            ns,
+        )
+        cls.moe = ns["moe"]
+        cls._moe_dtype_fixed = True
+        print(f"patched {cls.__name__}.moe dtype cast", flush=True)
+
+
 def _load_rows(path: Path, max_prompts: int | None) -> list[dict[str, str]]:
     out: list[dict[str, str]] = []
     with path.open(newline="") as fh:
@@ -110,14 +148,19 @@ def main(
     lr: float = typer.Option(1e-6),
     beta: float = typer.Option(0.04, help="KL to reference (anti-collapse)."),
     gpu_mem_util: float = typer.Option(
-        0.6, help="Fraction reserved for vLLM colocate."
+        0.6, help="Fraction reserved for vLLM colocate (only when --fast-inference)."
+    ),
+    load_4bit: bool = typer.Option(
+        False,
+        help="bnb 4-bit base. WALLED on NemotronH (fused Mamba/MoE break bnb) — leave off.",
     ),
     fast_inference: bool = typer.Option(
-        True,
-        help="Colocated vLLM rollouts. Off => HF generation (no unsloth<->vllm version lock).",
+        False,
+        help="Colocated vLLM rollouts. Off => HF generation. bf16 colocate needs 2x weights "
+        "(won't fit on 80GB) so default off; on requires --load-4bit.",
     ),
 ) -> None:
-    """GSPO (sequence-level IS) on a single A100 via Unsloth 4-bit. Rank<=32 adapter."""
+    """GSPO (sequence-level IS) on a single A100 via Unsloth bf16. Rank<=32 adapter."""
     from unsloth import FastLanguageModel  # noqa: I001 — must import before trl/transformers
     from datasets import Dataset
     from trl import GRPOConfig, GRPOTrainer
@@ -127,12 +170,13 @@ def main(
         import kagglehub
 
         base = kagglehub.model_download(KAGGLE_MODEL)
-    print(f"base model: {base}", flush=True)
+    print(f"base model: {base} | {'4bit' if load_4bit else 'bf16'}", flush=True)
 
     load_kwargs: dict[str, Any] = dict(
         model_name=base,
         max_seq_length=max_seq_len,
-        load_in_4bit=True,
+        load_in_4bit=load_4bit,
+        dtype=None,  # None => native bf16 on Ampere+ when not 4-bit
         trust_remote_code=True,  # NemotronH ships custom modeling code
         fast_inference=fast_inference,
     )
@@ -147,6 +191,7 @@ def main(
         use_gradient_checkpointing="unsloth",
         random_state=3407,
     )
+    _patch_nemotron_moe(model)
 
     rows = _load_rows(Path(data_path), max_prompts)
     ds = Dataset.from_list(
