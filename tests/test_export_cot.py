@@ -18,12 +18,18 @@ def test_upgrade_replaces_solvable_keeps_rest() -> None:
         {"prompt": _NUMERAL_PROMPT, "answer": "XXXVIII", "think": "old generic"},
         {"prompt": "unrelated non-puzzle text", "answer": "?", "think": "keep me"},
     ]
-    assert upgrade(rows) == 1
+    assert upgrade(rows) == (1, 0)  # (solver, oracle)
     assert "Roman" in rows[0]["think"] and "\\boxed" not in rows[0]["think"]
     assert rows[1]["think"] == "keep me"
 
 
 def test_upgrade_skips_when_solver_answer_mismatches_gold() -> None:
     rows = [{"prompt": _NUMERAL_PROMPT, "answer": "WRONG", "think": "untouched"}]
-    assert upgrade(rows) == 0
+    assert upgrade(rows) == (0, 0)
     assert rows[0]["think"] == "untouched"
+
+
+def test_upgrade_falls_back_to_oracle_by_id() -> None:
+    rows = [{"id": "x1", "prompt": "unsolvable puzzle", "answer": "?", "think": "old"}]
+    assert upgrade(rows, oracle={"x1": "oracle reasoning"}) == (0, 1)
+    assert rows[0]["think"] == "oracle reasoning"
