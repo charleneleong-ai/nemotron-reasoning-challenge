@@ -11,13 +11,17 @@ from __future__ import annotations
 
 import csv
 import re
+import sys
 from collections import defaultdict
 from pathlib import Path
 
 import typer
 
-from src.data.categories import classify
-from src.solve.registry import matches
+# Runs in .venv-unsloth (no project install) — make `src` importable from the repo root.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from src.data.categories import classify  # noqa: E402
+from src.solve.registry import matches  # noqa: E402
 
 app = typer.Typer(add_completion=False, pretty_exceptions_enable=False)
 KAGGLE_MODEL = "metric/nemotron-3-nano-30b-a3b-bf16/transformers/default"
