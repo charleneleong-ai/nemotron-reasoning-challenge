@@ -12,3 +12,13 @@ data/*
 outputs/
 *.zip
 adapters/
+logs/
+progress.html
+
+# env packages vendor the competition csv at push time (see scripts/prime_env_push.sh)
+environments/*/data/
+
+# unsloth/prime local artifacts
+unsloth_compiled_cache/
+environments/*/.prime/
+.venv-unsloth/

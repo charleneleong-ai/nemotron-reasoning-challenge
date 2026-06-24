@@ -8,3 +8,6 @@ max_steps: -1
 batch_size: 4
 grad_accum: 4
 output_dir: adapters/lora_a100
+# Matches the official NVIDIA demo's LoRA targets (Mamba in/out_proj + MLP up/down_proj).
+# PEFT treats a non-"all-linear" string as a regex over module names.
+lora_target_modules: .*\.(in_proj|out_proj|up_proj|down_proj)$

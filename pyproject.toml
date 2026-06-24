@@ -17,6 +17,9 @@ dependencies = [
   "peft>=0.13.0",
   "trl>=0.11.0",
   "tqdm>=4.67.0",
+  "kaggle>=2.2.1",
+  "python-dotenv>=1.2.2",
+  "google-genai>=2.8.0",
 ]
 
 [project.optional-dependencies]
@@ -53,6 +56,8 @@ fixable = ["ALL"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["N802", "N803"]
+# Kaggle notebooks do env setup (site.addsitedir) before imports, and print freely.
+"notebooks/**/*.ipynb" = ["E402", "T201"]
 
 [tool.mypy]
 disallow_untyped_defs = true

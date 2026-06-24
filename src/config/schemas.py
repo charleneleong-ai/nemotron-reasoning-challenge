@@ -19,8 +19,10 @@ class DataConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     path: str
-    prompt_field: str = "problem"
+    prompt_field: str = "prompt"
     answer_field: str = "answer"
+    # Optional CoT jsonl ({id, think}); when set, traces fill the <think> block in SFT.
+    cot_path: str | None = None
     eval_fraction: float = Field(0.1, gt=0.0, lt=1.0)
     seed: int = 42
     max_samples: int | None = Field(None, gt=0)
@@ -39,6 +41,17 @@ class TrainConfig(BaseModel):
     batch_size: int = Field(1, gt=0)
     grad_accum: int = Field(1, gt=0)
     output_dir: str = "adapters/run"
+    lora_target_modules: list[str] | str = Field(
+        default_factory=lambda: [
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+        ]
+    )
 
 
 class EvalConfig(BaseModel):

@@ -1,5 +1,9 @@
 kind: nemotron
-hf_id: nvidia/Nemotron-3-Nano-30B-A3B-BF16
-load_in_4bit: true
+# The competition's real base is the KAGGLE model `metric/nemotron-3-nano-30b-a3b-bf16`
+# (text, 30B-A3B Mamba-MoE), loaded via kagglehub in the Kaggle notebook — NOT from HF.
+# This hf_id is only used by the optional HF-based (local/A100) path; confirm an HF mirror
+# exists before using it. On Kaggle's RTX PRO 6000 (96GB) the model loads full bf16.
+hf_id: nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16
+load_in_4bit: false
 dtype: bfloat16
 max_seq_length: 2048

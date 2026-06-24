@@ -25,5 +25,6 @@ class TestLoader:
 
     def test_override_to_nemotron(self):
         cfg = load_experiment_config(["model=nemotron_nano", "train=lora_a100"])
-        assert cfg.model.hf_id == "nvidia/Nemotron-3-Nano-30B-A3B-BF16"
+        assert cfg.model.kind == "nemotron"
+        assert cfg.model.hf_id.startswith("nvidia/Nemotron-3-Nano")
         assert cfg.train.lora_rank <= 32

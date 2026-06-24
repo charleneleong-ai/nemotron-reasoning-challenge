@@ -1,4 +1,4 @@
-"""Typer CLI: prepare | train | eval | package."""
+"""Typer CLI: download | augment | prepare | train | eval | package | submit."""
 
 from pathlib import Path
 
@@ -14,6 +14,63 @@ app = typer.Typer(
     no_args_is_help=True,
     pretty_exceptions_enable=False,
 )
+
+
+@app.command()
+def download() -> None:
+    """Download + extract the Kaggle competition data into data/ (reads KAGGLE_API_TOKEN from .env)."""
+    from src.data.download import download_dataset
+
+    dest = download_dataset()
+    rich_print(f"[green]data ready[/green] -> {dest}")
+
+
+@app.command()
+def augment(
+    overrides: list[str] = typer.Argument(None),
+    model: str = typer.Option(
+        "gemini-3.1-flash-lite", help="Gemini model for CoT generation."
+    ),
+    out: str = typer.Option("data/cot.jsonl", help="Output jsonl of CoT traces."),
+) -> None:
+    """Generate synthetic <think> CoT traces via Gemini (reads GEMINI_API_KEY from .env).
+
+    Resumable: appends to `out` and skips puzzles already present, so re-running fills gaps.
+    """
+    import asyncio
+    import json
+
+    from src.config.settings import settings
+    from src.data.augment import gemini_generator, generate_cot, load_done_ids
+    from src.data.puzzles import Puzzle, load_puzzles
+
+    if settings.GEMINI_API_KEY is None:
+        raise RuntimeError("GEMINI_API_KEY (or GOOGLE_API_KEY) not set in .env")
+    cfg = load_experiment_config(overrides)
+    out_path = Path(out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    done = load_done_ids(out_path)
+    todo = [p for p in load_puzzles(cfg.data) if p.id not in done]
+    rich_print(
+        f"[cyan]{len(todo)} to generate[/cyan] ({len(done)} already done) -> {out}"
+    )
+
+    gen = gemini_generator(model, settings.GEMINI_API_KEY.get_secret_value())
+    with out_path.open("a") as fh:
+
+        def _write(p: Puzzle, think: str) -> None:
+            fh.write(
+                json.dumps(
+                    {"id": p.id, "prompt": p.prompt, "answer": p.answer, "think": think}
+                )
+                + "\n"
+            )
+            fh.flush()
+
+        asyncio.run(generate_cot(todo, gen, on_result=_write))
+    rich_print(
+        f"[green]done[/green] {len(load_done_ids(out_path))} total CoT traces -> {out}"
+    )
 
 
 @app.command()
@@ -54,6 +111,17 @@ def package(overrides: list[str] = typer.Argument(None)) -> None:
     cfg = load_experiment_config(overrides)
     out = package_submission(Path(cfg.train.output_dir), Path("submission.zip"))
     rich_print(f"[green]packaged[/green] -> {out}")
+
+
+@app.command()
+def submit(
+    message: str = typer.Option("submission", help="Submission description."),
+) -> None:
+    """Upload submission.zip to the Kaggle competition (reads KAGGLE_API_TOKEN from .env)."""
+    from src.submission.submit import submit as submit_zip
+
+    submit_zip(Path("submission.zip"), message)
+    rich_print("[green]submitted[/green] submission.zip")
 
 
 if __name__ == "__main__":

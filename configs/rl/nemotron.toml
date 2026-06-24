@@ -1,0 +1,39 @@
+# Hosted GRPO (Prime's "rl" loss) of the Nemotron-3-Nano MoE on our reasoning puzzles.
+#
+#   prime env push --path environments/nemotron_reasoning   # -> chaleong/nemotron-reasoning
+#   prime train     configs/rl/nemotron.toml
+#
+# Adapter back: prime train checkpoints <run_id> --status READY  -> .storage_url -> Kaggle.
+#
+# NOTE 1 — GRPO, not GSPO: Prime hosted exposes no importance_sampling_level knob. For true
+#   GSPO (sequence-level IS, MoE-stable) escalate to a multi-GPU pod + scripts/gspo_a100.py.
+# NOTE 2 — LoRA rank: Prime exposes lora_alpha but not the rank. Kaggle caps rank <= 32, so
+#   VERIFY the produced adapter's r before the real submission (inspect adapter_config.json).
+model = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+loss = "rl"
+
+# Budget-fit: ~$16-18 worst-case on the $25 wallet (smoke = $0.33/3 steps @ batch16, with
+# oversampling). Extend via `prime train restart <run_id>` if it's learning + budget remains.
+max_steps = 50
+batch_size = 48
+rollouts_per_example = 8     # GRPO group: within-prompt reward variance
+learning_rate = 1e-5
+lora_alpha = 32
+
+[sampling]
+max_tokens = 4096            # room for <think> reasoning + the boxed answer
+enable_thinking = true       # Nemotron reasoning mode
+
+[[env]]
+id = "chaleong/nemotron-reasoning"
+args = { n_tasks = 4000, format_weight = 0.1 }
+
+[eval]
+interval = 50
+eval_base_model = true       # measure the lift vs the base model
+
+[[eval.env]]
+id = "chaleong/nemotron-reasoning"
+args = { n_tasks = 200, start = 4000 }   # held-out slice (after the train subset)
+num_examples = 200
+rollouts_per_example = 1
