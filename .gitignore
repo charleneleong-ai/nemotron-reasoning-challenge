@@ -12,6 +12,8 @@ data/*
 outputs/
 *.zip
 adapters/
+logs/
+progress.html
 
 # env packages vendor the competition csv at push time (see scripts/prime_env_push.sh)
 environments/*/data/
