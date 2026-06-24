@@ -1,9 +1,14 @@
 """Local SFT of a rank-32 LoRA on the A100, mirroring the Kaggle recipe that scored 0.62.
 
-Same model/rank/format as the fast SFT kernel — the only change is the data: train
-on cot_hybrid.jsonl, where 5999/9500 reasoning traces are deterministic-solver
-output (verified correct) instead of generic CoT. SFT has no generation loop, so the
+Same model/rank/format as the fast SFT kernel; the change is the data — train on
+cot_hybrid.jsonl, where 5999/9500 reasoning traces are deterministic-solver output
+(verified correct) instead of generic CoT. SFT has no generation loop, so the
 NemotronH KV-cache slowness that blocks local RL doesn't apply here.
+
+COMPLETION-ONLY LOSS: the puzzle prompts are high-entropy random data (cipher
+gibberish, random bits/floats) — training to predict them floods the loss (~9) and
+wastes capacity. We mask everything up to the template's prefilled `<think>\\n` (the
+inference boundary) and train only on the reasoning + boxed answer, like the 0.62 run.
 
     .venv-unsloth/bin/python scripts/sft_local.py --max-steps 5 --max-rows 64   # smoke
     .venv-unsloth/bin/python scripts/sft_local.py                                # full
@@ -26,11 +31,37 @@ KAGGLE_MODEL = "metric/nemotron-3-nano-30b-a3b-bf16/transformers/default"
 TARGET_MODULES = ["in_proj", "out_proj", "up_proj", "down_proj"]
 
 
-def completion_text(answer: str, think: str) -> str:
-    """Assistant continuation AFTER the template's prefilled `<think>\\n`: the reasoning,
-    the closing tag, then the boxed answer. Concatenated with the prompt this yields
-    `<think>\\n{think}\\n</think>\\n\\n\\boxed{answer}` — exactly the inference shape."""
-    return f"{think.strip()}\n</think>\n\n\\boxed{{{answer}}}"
+def format_target(answer: str, think: str) -> str:
+    """Full assistant turn: <think> reasoning </think> then the boxed answer."""
+    return f"<think>\n{think.strip()}\n</think>\n\n\\boxed{{{answer}}}"
+
+
+def _tokenize(rows: list[dict[str, str]], tokenizer: Any, max_len: int) -> list[dict]:
+    """Tokenize to {input_ids, attention_mask, labels} with the prompt masked (-100).
+
+    Labels cover only the tokens after the inference boundary (the prefilled `<think>\\n`),
+    i.e. exactly what the model must generate. Examples longer than max_len are dropped
+    (not truncated) so the boxed answer is never cut from the label.
+    """
+    out: list[dict] = []
+    for r in rows:
+        msgs = [{"role": "user", "content": r["prompt"]}]
+        prompt_ids = tokenizer.apply_chat_template(msgs, add_generation_prompt=True)
+        msgs.append(
+            {"role": "assistant", "content": format_target(r["answer"], r["think"])}
+        )
+        full_ids = tokenizer.apply_chat_template(msgs)
+        if full_ids[: len(prompt_ids)] != prompt_ids or len(full_ids) > max_len:
+            continue
+        labels = [-100] * len(prompt_ids) + full_ids[len(prompt_ids) :]
+        out.append(
+            {
+                "input_ids": full_ids,
+                "attention_mask": [1] * len(full_ids),
+                "labels": labels,
+            }
+        )
+    return out
 
 
 def _patch_nemotron_moe(model: Any) -> None:
@@ -81,11 +112,12 @@ def main(
     batch: int = typer.Option(2),
     grad_accum: int = typer.Option(4),
     lr: float = typer.Option(2e-5),
-    max_seq_len: int = typer.Option(4096),
+    max_seq_len: int = typer.Option(1536),
 ) -> None:
-    """SFT a rank-32 LoRA on cot_hybrid.jsonl (bf16, NemotronH) and package submission.zip."""
+    """SFT a rank-32 LoRA on cot_hybrid.jsonl (bf16, completion-only loss) + package submission.zip."""
     from unsloth import FastLanguageModel  # noqa: I001 — import before trl/transformers
     from datasets import Dataset
+    from transformers import DataCollatorForSeq2Seq
     from trl import SFTConfig, SFTTrainer
 
     base = model_path
@@ -93,7 +125,7 @@ def main(
         import kagglehub
 
         base = kagglehub.model_download(KAGGLE_MODEL)
-    print(f"base model: {base} | bf16 SFT", flush=True)
+    print(f"base model: {base} | bf16 SFT (completion-only)", flush=True)
 
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=base,
@@ -119,28 +151,15 @@ def main(
     rows = [json.loads(line) for line in Path(data_path).open()]
     if max_rows:
         rows = rows[:max_rows]
-
-    def _prompt(p: str) -> str:  # ends with the prefilled "<think>\n"
-        return tokenizer.apply_chat_template(
-            [{"role": "user", "content": p}], tokenize=False, add_generation_prompt=True
-        )
-
-    # prompt/completion split + completion_only_loss masks the (high-entropy, unlearnable)
-    # puzzle prompt and trains ONLY on the reasoning + boxed answer. The reasoning lands
-    # inside the prefilled <think> — matching inference — which the messages API can't do
-    # here (this template renders assistant content after an empty <think></think>).
-    ds = Dataset.from_list(
-        [
-            {
-                "prompt": _prompt(r["prompt"]),
-                "completion": completion_text(r["answer"], r["think"]),
-            }
-            for r in rows
-        ]
+    examples = _tokenize(rows, tokenizer, max_seq_len)
+    ds = Dataset.from_list(examples)
+    trained = sum(sum(1 for x in e["labels"] if x != -100) for e in examples)
+    print(
+        f"SFT examples: {len(ds)}/{len(rows)} (avg {trained / max(len(ds), 1):.0f} trained tokens)",
+        flush=True,
     )
-    print(f"SFT examples: {len(ds)}", flush=True)
 
-    cfg = SFTConfig(
+    args = SFTConfig(
         output_dir=out,
         per_device_train_batch_size=batch,
         gradient_accumulation_steps=grad_accum,
@@ -149,16 +168,26 @@ def main(
         max_steps=max_steps,
         max_length=max_seq_len,
         logging_steps=1,
-        # Checkpoint periodically so a multi-hour run survives a crash with a usable adapter.
         save_strategy="steps",
         save_steps=300,
         save_total_limit=1,
         report_to=[],
         bf16=True,
-        completion_only_loss=True,  # mask the prompt; train only on the reasoning + boxed answer
+        # 8-bit Adam: the MoE-expert LoRA (128 experts) has large optimizer state; fp32
+        # Adam pushed the card to 99% pre-training and OOM'd. 8-bit cuts it ~4x.
+        optim="adamw_8bit",
+        # Feed our pre-tokenized, prompt-masked rows straight through (SFTTrainer tolerates
+        # Unsloth's device_map'd model where plain Trainer refuses).
+        dataset_kwargs={"skip_prepare_dataset": True},
     )
+    collator = DataCollatorForSeq2Seq(tokenizer, padding=True, label_pad_token_id=-100)
     trainer = SFTTrainer(
-        model=model, args=cfg, processing_class=tokenizer, train_dataset=ds
+        model=model,
+        args=args,
+        train_dataset=ds,
+        data_collator=collator,
+        processing_class=tokenizer,  # pass our trust_remote_code tokenizer; else SFTTrainer
+        # auto-loads a processor without trust_remote_code and EOFs on the [y/N] prompt
     )
     trainer.train()
 
